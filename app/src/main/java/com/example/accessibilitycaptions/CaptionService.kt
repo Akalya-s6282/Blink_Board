@@ -1,0 +1,278 @@
+package com.example.accessibilitycaptions
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioPlaybackCaptureConfiguration
+import android.media.AudioRecord
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyCallback
+import android.telephony.TelephonyManager
+import android.util.Log
+import androidx.annotation.RequiresApi
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
+
+@RequiresApi(Build.VERSION_CODES.Q)
+class CaptionService : Service() {
+
+    private val TAG = "CaptionService"
+    private val isCapturing = AtomicBoolean(false)
+    private var audioCaptureThread: Thread? = null
+    private var audioRecord: AudioRecord? = null
+    private var telephonyManager: TelephonyManager? = null
+    private var isInPhoneCall = false
+    private val sampleRate = 16000
+    private val channelConfig = AudioFormat.CHANNEL_IN_MONO
+    private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+    private var bufferSize = 0
+    private var mediaProjection: MediaProjection? = null
+
+    companion object {
+        const val CHANNEL_ID = "CaptionServiceChannel"
+        const val NOTIFICATION_ID = 1
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
+        setupPhoneStateListener()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startForeground(NOTIFICATION_ID, createNotification())
+        Log.d(TAG, "Service starting...")
+
+        val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
+        @Suppress("DEPRECATION")
+        val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent?.getParcelableExtra("data", Intent::class.java)
+        } else {
+            intent?.getParcelableExtra("data")
+        }
+
+        if (resultCode != -1 && data != null) {
+            val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
+        }
+
+        if (checkPermissions()) {
+            startInitialCapture()
+        } else {
+            Log.e(TAG, "Permissions not granted")
+            stopSelf()
+        }
+        return START_STICKY
+    }
+
+    private fun checkPermissions(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun setupPhoneStateListener() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "READ_PHONE_STATE permission not granted. Cannot detect phone calls.")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            setupTelephonyCallback()
+        } else {
+            setupLegacyPhoneStateListener()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun setupTelephonyCallback() {
+        val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+            override fun onCallStateChanged(state: Int) {
+                handleCallStateChange(state)
+            }
+        }
+        telephonyManager?.registerTelephonyCallback(ContextCompat.getMainExecutor(this), callback)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun setupLegacyPhoneStateListener() {
+        val listener = object : PhoneStateListener() {
+            @Deprecated("Deprecated in Java")
+            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                handleCallStateChange(state)
+            }
+        }
+        telephonyManager?.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
+    }
+
+    private fun handleCallStateChange(state: Int) {
+        val wasInCall = isInPhoneCall
+        isInPhoneCall = when (state) {
+            TelephonyManager.CALL_STATE_OFFHOOK, TelephonyManager.CALL_STATE_RINGING -> true
+            else -> false
+        }
+        if (wasInCall != isInPhoneCall) {
+            Log.d(TAG, "Call state changed. In call: $isInPhoneCall")
+            switchCaptureMode(useInCallMode = isInPhoneCall)
+        }
+    }
+
+    private fun switchCaptureMode(useInCallMode: Boolean) {
+        stopCapture()
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (useInCallMode) {
+                startInCallCapture()
+            } else {
+                startMicrophoneCapture()
+            }
+        }, 1000)
+    }
+
+    private fun startInitialCapture() {
+        if (isInPhoneCall) {
+            startInCallCapture()
+        } else {
+            startMicrophoneCapture()
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startMicrophoneCapture(): Boolean {
+        Log.d(TAG, "Attempting to start microphone capture...")
+        try {
+            audioRecord = AudioRecord.Builder()
+                .setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(audioFormat)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(channelConfig)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufferSize)
+                .build()
+
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "Microphone AudioRecord not initialized")
+                return false
+            }
+            audioRecord?.startRecording()
+            isCapturing.set(true)
+            audioCaptureThread = thread { processAudioStream("MIC") }
+            Log.d(TAG, "✓ Microphone capture started")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start microphone capture: ", e)
+            return false
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startInCallCapture(): Boolean {
+        Log.d(TAG, "Attempting to start in-call audio capture...")
+        if (mediaProjection == null) {
+            Log.e(TAG, "MediaProjection is not available for in-call capture.")
+            return false
+        }
+        val config = AudioPlaybackCaptureConfiguration.Builder(mediaProjection!!)
+            .addMatchingUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            .build()
+        try {
+            audioRecord = AudioRecord.Builder()
+                .setAudioPlaybackCaptureConfig(config)
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(audioFormat)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(channelConfig)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufferSize)
+                .build()
+
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "In-call AudioRecord not initialized")
+                return false
+            }
+            audioRecord?.startRecording()
+            isCapturing.set(true)
+            audioCaptureThread = thread { processAudioStream("CALL") }
+            Log.d(TAG, "✓ In-call audio capture started")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start in-call audio capture: ", e)
+            return false
+        }
+    }
+
+    private fun processAudioStream(source: String) {
+        val buffer = ByteArray(bufferSize)
+        Log.d(TAG, "Audio processing thread started for $source")
+        while (isCapturing.get()) {
+            val bytesRead = audioRecord?.read(buffer, 0, buffer.size) ?: 0
+            if (bytesRead > 0) {
+                Log.d(TAG, "Captured $bytesRead bytes from $source")
+                // TODO: Send this 'buffer' to a real Speech-to-Text API
+            }
+        }
+        Log.d(TAG, "Audio processing thread stopped for $source")
+    }
+
+    private fun stopCapture() {
+        isCapturing.set(false)
+        audioCaptureThread?.interrupt()
+        audioCaptureThread = null
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+            audioRecord = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping audio capture: ", e)
+        }
+        Log.d(TAG, "Audio capture stopped.")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopCapture()
+        mediaProjection?.stop()
+        mediaProjection = null
+        Log.d(TAG, "Service destroyed")
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(CHANNEL_ID, "Caption Service", NotificationManager.IMPORTANCE_DEFAULT)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNotification(): Notification {
+        val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val statusText = if (isInPhoneCall) "Capturing call audio" else "Listening for microphone audio"
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Caption Service Active")
+            .setContentText(statusText)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
+    }
+}

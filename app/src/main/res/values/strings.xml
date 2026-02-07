@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Accessibility Captions</string>
+
+    <string name="accessibility_service_description">
+        Provides real-time captions and voice command control for video calls.
+        
+
+
+
+        Features:
+        
+• Converts your speech to text captions
+        
+• Voice commands to control calls (mute, camera, end)
+        
+• Opens apps with voice (notes, chrome, settings)
+        
+• Works during Zoom, Meet, WhatsApp calls
+        
+
+
+
+        This service helps deaf and non-verbal users by providing:
+        
+• Real-time speech-to-text captions
+        
+• Voice-controlled actions
+        
+• Hands-free operation
+        
+
+
+
+        Privacy: Audio is processed only for captions and commands. No recordings are saved.
+    </string>
+
+    <string name="service_notification_title">Caption Service Active</string>
+    <string name="service_notification_text">Listening for speech and commands</string>
+    <string name="caption_text">🗣 %1$s</string>
+</resources>
