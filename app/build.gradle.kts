@@ -64,9 +64,8 @@ dependencies {
     implementation(libs.com.google.android.material)
     implementation(libs.androidx.cardview)
     
-    // Direct MediaPipe dependencies to bypass version catalog issues
-    implementation("com.google.mediapipe:tasks-text:0.10.14")
-    implementation("com.google.mediapipe:tasks-audio:0.10.14")
+    implementation(libs.mediapipe.tasks.text)
+    implementation(libs.mediapipe.tasks.audio)
 
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
