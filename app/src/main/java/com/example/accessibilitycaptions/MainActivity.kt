@@ -4,27 +4,25 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
-import android.widget.Button
-import android.widget.TextView
 import android.widget.Toast
-import android.widget.ToggleButton
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.accessibilitycaptions.ui.MainScreen
+import com.example.accessibilitycaptions.ui.theme.AccessibilityCaptionsTheme
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
     private val tag = "MainActivity"
     private val viewModel: MainViewModel by viewModels()
@@ -49,26 +47,29 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
-        findViewById<Button>(R.id.btnEnableAccessibility).setOnClickListener { checkAllPermissions() }
-        findViewById<Button>(R.id.btnStartService).setOnClickListener { handleStartListeningClick() }
-        findViewById<Button>(R.id.btnStopService).setOnClickListener { stopSpeechRecognition() }
-        findViewById<ToggleButton>(R.id.toggleCommandMode).setOnCheckedChangeListener { _, isChecked ->
-            viewModel.setCommandMode(isChecked)
-            val mode = if (isChecked) "Command" else "Caption"
-            Toast.makeText(this, "Switched to $mode Mode", Toast.LENGTH_SHORT).show()
-        }
+        setContent {
+            AccessibilityCaptionsTheme {
+                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-        observeViewModel()
-    }
-
-    private fun observeViewModel() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiState.collect { state ->
-                    updateStatusUi(state)
-                }
+                MainScreen(
+                    uiState = uiState,
+                    onEnableAccessibilityClicked = { checkAllPermissions() },
+                    onStartListeningClicked = { handleStartListeningClick() },
+                    onStopListeningClicked = { stopSpeechRecognition() },
+                    onCommandModeToggled = { isChecked ->
+                        viewModel.setCommandMode(isChecked)
+                        val mode = if (isChecked) "Command" else "Caption"
+                        Toast.makeText(this, "Switched to $mode Mode", Toast.LENGTH_SHORT).show()
+                    },
+                    onDisclosureAccepted = {
+                        viewModel.setShowDisclosureDialog(false)
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    },
+                    onDisclosureDismissed = {
+                        viewModel.setShowDisclosureDialog(false)
+                    }
+                )
             }
         }
     }
@@ -86,7 +87,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun startSpeechRecognition() {
         if (speechRecognizer == null) {
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+            speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+            ) {
+                Log.d(tag, "Using On-Device Speech Recognizer")
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+            } else {
+                Log.d(tag, "Using System Speech Recognizer")
+                SpeechRecognizer.createSpeechRecognizer(this)
+            }.apply {
                 setRecognitionListener(createRecognitionListener())
             }
         }
@@ -163,38 +172,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAllPermissions() {
         if (!isAccessibilityEnabled()) {
-            showProminentDisclosureDialog {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            }
+            viewModel.setShowDisclosureDialog(true)
         } else if (!canDrawOverlays()) {
             requestOverlayPermission()
         } else {
             Toast.makeText(this, "All permissions are granted!", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun showProminentDisclosureDialog(onAccepted: () -> Unit) {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.prominent_disclosure_title)
-            .setMessage(R.string.prominent_disclosure_message)
-            .setPositiveButton(R.string.action_agree) { dialog, _ ->
-                dialog.dismiss()
-                onAccepted()
-            }
-            .setNegativeButton(R.string.action_cancel) { dialog, _ ->
-                dialog.dismiss()
-            }
-            .setCancelable(false)
-            .show()
-    }
-
-    private fun updateStatusUi(state: MainUiState) {
-        val statusView = findViewById<TextView>(R.id.tvStatus)
-        val accessibilityText = if (state.isAccessibilityEnabled) "Enabled" else "Disabled"
-        val overlayText = if (state.isOverlayGranted) "Granted" else "Not Granted"
-        val micText = if (state.isAudioPermissionGranted) "Granted" else "Not Granted"
-
-        statusView.text = "Accessibility Service: $accessibilityText\nOverlay Permission: $overlayText\nMicrophone Permission: $micText"
     }
 
     private fun isAccessibilityEnabled(): Boolean {
