@@ -24,7 +24,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -63,9 +64,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.com.google.android.material)
     implementation(libs.androidx.cardview)
-    
-    implementation(libs.mediapipe.tasks.text)
-    implementation(libs.mediapipe.tasks.audio)
+    implementation(libs.androidx.lifecycle.viewmodel)
 
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
