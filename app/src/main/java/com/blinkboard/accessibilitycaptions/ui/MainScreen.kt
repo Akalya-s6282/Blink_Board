@@ -105,12 +105,6 @@ fun MainScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = "Real-time captions & hands-free voice command control for video calls",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
             // Permission Status Card with Chips
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
