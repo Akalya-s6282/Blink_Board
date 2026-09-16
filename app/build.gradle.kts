@@ -53,8 +53,8 @@ android {
         }
     }
 
-    aaptOptions {
-        noCompress("tflite")
+    androidResources {
+        noCompress += "tflite"
     }
 
     testOptions {
@@ -72,9 +72,7 @@ dependencies {
     implementation(libs.androidx.cardview)
     implementation(libs.androidx.lifecycle.viewmodel)
 
-    val composeBom = platform(libs.androidx.compose.bom)
-    implementation(composeBom)
-    androidTestImplementation(composeBom)
+    implementation(platform(libs.androidx.compose.bom))
 
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -85,7 +83,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
     testImplementation(libs.junit)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
