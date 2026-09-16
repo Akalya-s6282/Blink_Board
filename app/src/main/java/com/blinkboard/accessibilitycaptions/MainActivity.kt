@@ -1,12 +1,14 @@
 package com.blinkboard.accessibilitycaptions
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.view.accessibility.AccessibilityManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -118,11 +120,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isAccessibilityEnabled(): Boolean {
-        val serviceId = "${packageName}/${CaptionAccessibilityService::class.java.canonicalName}"
-        val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-            ?: return false
+        val am = getSystemService(ACCESSIBILITY_SERVICE) as? AccessibilityManager
+        if (am != null) {
+            val enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            for (service in enabledServices) {
+                val serviceInfo = service.resolveInfo?.serviceInfo
+                if (serviceInfo?.packageName == packageName &&
+                    serviceInfo.name == CaptionAccessibilityService::class.java.name
+                ) {
+                    return true
+                }
+            }
+        }
 
-        return enabledServices.contains(serviceId, ignoreCase = true)
+        val expectedFullId = "$packageName/${CaptionAccessibilityService::class.java.name}"
+        val expectedShortId = "$packageName/.${CaptionAccessibilityService::class.java.simpleName}"
+        val enabledServicesString = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+
+        return enabledServicesString.contains(expectedFullId, ignoreCase = true) ||
+                enabledServicesString.contains(expectedShortId, ignoreCase = true) ||
+                enabledServicesString.contains(CaptionAccessibilityService::class.java.simpleName, ignoreCase = true)
     }
 
     private fun canDrawOverlays(): Boolean {

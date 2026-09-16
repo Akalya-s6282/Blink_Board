@@ -81,7 +81,6 @@ class CaptionService : Service() {
             return START_NOT_STICKY
         }
 
-        startForegroundServiceNotification()
         Log.d(tag, "Service starting...")
 
         val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
@@ -97,6 +96,8 @@ class CaptionService : Service() {
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
         }
 
+        startForegroundServiceNotification()
+
         if (checkPermissions()) {
             startInitialCapture()
             startSpeechRecognition()
@@ -110,21 +111,32 @@ class CaptionService : Service() {
     private fun startSpeechRecognition() {
         mainHandler.post {
             if (speechRecognizer == null) {
-                speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-                ) {
-                    Log.d(tag, "Using On-Device Speech Recognizer in Service")
-                    SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-                } else {
-                    Log.d(tag, "Using System Speech Recognizer in Service")
-                    SpeechRecognizer.createSpeechRecognizer(this)
-                }.apply {
-                    setRecognitionListener(createRecognitionListener())
+                try {
+                    speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+                    ) {
+                        Log.d(tag, "Using On-Device Speech Recognizer in Service")
+                        SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                    } else {
+                        Log.d(tag, "Using System Speech Recognizer in Service")
+                        SpeechRecognizer.createSpeechRecognizer(this)
+                    }.apply {
+                        setRecognitionListener(createRecognitionListener())
+                    }
+                } catch (e: Exception) {
+                    Log.e(tag, "Error creating SpeechRecognizer", e)
+                    CaptionEventBus.setListening(false)
+                    return@post
                 }
             }
-            speechRecognizer?.startListening(speechRecognizerIntent)
-            CaptionEventBus.setListening(true)
-            Log.d(tag, "Speech recognition listening started in background service")
+            try {
+                speechRecognizer?.startListening(speechRecognizerIntent)
+                CaptionEventBus.setListening(true)
+                Log.d(tag, "Speech recognition listening started in background service")
+            } catch (e: Exception) {
+                Log.e(tag, "Error starting SpeechRecognizer listening", e)
+                CaptionEventBus.setListening(false)
+            }
         }
     }
 
@@ -146,7 +158,7 @@ class CaptionService : Service() {
             override fun onResults(results: Bundle?) {
                 val spokenText = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.get(0) ?: ""
                 if (spokenText.isNotEmpty()) {
-                    CaptionEventBus.emitSpokenText(spokenText)
+                    CaptionEventBus.emitSpokenText(spokenText, isFinal = true)
                 }
                 restartListening()
             }
@@ -154,7 +166,7 @@ class CaptionService : Service() {
             override fun onPartialResults(partialResults: Bundle?) {
                 val spokenText = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.get(0) ?: ""
                 if (spokenText.isNotEmpty()) {
-                    CaptionEventBus.emitSpokenText(spokenText)
+                    CaptionEventBus.emitSpokenText(spokenText, isFinal = false)
                 }
             }
 
@@ -192,14 +204,18 @@ class CaptionService : Service() {
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             var serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && mediaProjection != null) {
                 serviceType = serviceType or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
             }
             try {
                 startForeground(NOTIFICATION_ID, notification, serviceType)
             } catch (e: Exception) {
                 Log.e(tag, "Error starting foreground service with type", e)
-                startForeground(NOTIFICATION_ID, notification)
+                try {
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                } catch (e2: Exception) {
+                    Log.e(tag, "Fallback error starting foreground service", e2)
+                }
             }
         } else {
             startForeground(NOTIFICATION_ID, notification)
