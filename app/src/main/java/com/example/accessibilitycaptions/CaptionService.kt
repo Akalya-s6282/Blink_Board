@@ -18,9 +18,13 @@ import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
@@ -46,9 +50,21 @@ class CaptionService : Service() {
     private var bufferSize = 0
     private var mediaProjection: MediaProjection? = null
 
+    private var speechRecognizer: SpeechRecognizer? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val speechRecognizerIntent by lazy {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+        }
+    }
+
     companion object {
         const val CHANNEL_ID = "CaptionServiceChannel"
         const val NOTIFICATION_ID = 1
+        const val ACTION_STOP_SERVICE = "com.example.accessibilitycaptions.STOP_SERVICE"
     }
 
     override fun onCreate() {
@@ -60,6 +76,11 @@ class CaptionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_SERVICE) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         startForegroundServiceNotification()
         Log.d(tag, "Service starting...")
 
@@ -78,11 +99,93 @@ class CaptionService : Service() {
 
         if (checkPermissions()) {
             startInitialCapture()
+            startSpeechRecognition()
         } else {
             Log.e(tag, "Permissions not granted")
             stopSelf()
         }
         return START_STICKY
+    }
+
+    private fun startSpeechRecognition() {
+        mainHandler.post {
+            if (speechRecognizer == null) {
+                speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+                ) {
+                    Log.d(tag, "Using On-Device Speech Recognizer in Service")
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                } else {
+                    Log.d(tag, "Using System Speech Recognizer in Service")
+                    SpeechRecognizer.createSpeechRecognizer(this)
+                }.apply {
+                    setRecognitionListener(createRecognitionListener())
+                }
+            }
+            speechRecognizer?.startListening(speechRecognizerIntent)
+            CaptionEventBus.setListening(true)
+            Log.d(tag, "Speech recognition listening started in background service")
+        }
+    }
+
+    private fun stopSpeechRecognition() {
+        mainHandler.post {
+            try {
+                speechRecognizer?.destroy()
+            } catch (e: Exception) {
+                Log.e(tag, "Error destroying SpeechRecognizer", e)
+            }
+            speechRecognizer = null
+            CaptionEventBus.setListening(false)
+            Log.d(tag, "Speech recognition stopped in background service")
+        }
+    }
+
+    private fun createRecognitionListener(): RecognitionListener {
+        return object : RecognitionListener {
+            override fun onResults(results: Bundle?) {
+                val spokenText = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.get(0) ?: ""
+                if (spokenText.isNotEmpty()) {
+                    CaptionEventBus.emitSpokenText(spokenText)
+                }
+                restartListening()
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val spokenText = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.get(0) ?: ""
+                if (spokenText.isNotEmpty()) {
+                    CaptionEventBus.emitSpokenText(spokenText)
+                }
+            }
+
+            override fun onError(error: Int) {
+                Log.e(tag, "Service speech recognition error: $error")
+                mainHandler.postDelayed({
+                    if (CaptionEventBus.isListening.value) {
+                        restartListening()
+                    }
+                }, 1000)
+            }
+
+            override fun onEndOfSpeech() {}
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+    }
+
+    private fun restartListening() {
+        mainHandler.post {
+            if (speechRecognizer != null && CaptionEventBus.isListening.value) {
+                try {
+                    speechRecognizer?.startListening(speechRecognizerIntent)
+                } catch (e: Exception) {
+                    Log.e(tag, "Error restarting speech recognition", e)
+                }
+            }
+        }
     }
 
     private fun startForegroundServiceNotification() {
@@ -149,12 +252,13 @@ class CaptionService : Service() {
         if (wasInCall != isInPhoneCall) {
             Log.d(tag, "Call state changed. In call: $isInPhoneCall")
             switchCaptureMode(useInCallMode = isInPhoneCall)
+            restartListening()
         }
     }
 
     private fun switchCaptureMode(useInCallMode: Boolean) {
         stopCapture()
-        Handler(Looper.getMainLooper()).postDelayed({
+        mainHandler.postDelayed({
             if (useInCallMode) {
                 startInCallCapture()
             } else {
@@ -273,6 +377,7 @@ class CaptionService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopSpeechRecognition()
         stopCapture()
         mediaProjection?.stop()
         mediaProjection = null
@@ -299,7 +404,7 @@ class CaptionService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
-        val statusText = if (isInPhoneCall) "Capturing call audio" else "Listening for microphone audio"
+        val statusText = if (isInPhoneCall) "Capturing call audio & voice commands" else "Listening for speech & voice commands"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.service_notification_title))
             .setContentText(statusText)

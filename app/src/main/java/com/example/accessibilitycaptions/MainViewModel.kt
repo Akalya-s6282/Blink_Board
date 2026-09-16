@@ -1,10 +1,12 @@
 package com.example.accessibilitycaptions
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class MainUiState(
     val isCommandMode: Boolean = false,
@@ -21,17 +23,30 @@ class MainViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            CaptionEventBus.isCommandMode.collect { isCommand ->
+                _uiState.update { it.copy(isCommandMode = isCommand) }
+            }
+        }
+        viewModelScope.launch {
+            CaptionEventBus.isListening.collect { listening ->
+                _uiState.update {
+                    it.copy(
+                        isListening = listening,
+                        speechErrorCount = if (listening) 0 else it.speechErrorCount
+                    )
+                }
+            }
+        }
+    }
+
     fun setCommandMode(isCommand: Boolean) {
-        _uiState.update { it.copy(isCommandMode = isCommand) }
+        CaptionEventBus.setCommandMode(isCommand)
     }
 
     fun setListening(listening: Boolean) {
-        _uiState.update {
-            it.copy(
-                isListening = listening,
-                speechErrorCount = if (listening) 0 else it.speechErrorCount
-            )
-        }
+        CaptionEventBus.setListening(listening)
     }
 
     fun updatePermissions(
@@ -50,30 +65,5 @@ class MainViewModel : ViewModel() {
 
     fun setShowDisclosureDialog(show: Boolean) {
         _uiState.update { it.copy(showDisclosureDialog = show) }
-    }
-
-    fun handleSpeechError(): Boolean {
-        var shouldRetry = true
-        _uiState.update {
-            val newCount = it.speechErrorCount + 1
-            if (newCount >= 3) {
-                shouldRetry = false
-                it.copy(speechErrorCount = newCount, isListening = false)
-            } else {
-                it.copy(speechErrorCount = newCount)
-            }
-        }
-        return shouldRetry
-    }
-
-    fun onSpokenTextRecognized(text: String) {
-        if (text.isNotBlank()) {
-            val isCommand = _uiState.value.isCommandMode
-            if (isCommand) {
-                CaptionEventBus.emitVoiceCommand(text)
-            } else {
-                CaptionEventBus.emitCaptionUpdate(text)
-            }
-        }
     }
 }
