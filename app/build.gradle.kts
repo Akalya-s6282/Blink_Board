@@ -9,11 +9,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.accessibilitycaptions"
+    namespace = "com.blinkboard.accessibilitycaptions"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.accessibilitycaptions"
+        applicationId = "com.blinkboard.accessibilitycaptions"
         minSdk = 29   // Android 10+ (shared mic support)
         targetSdk = 34
         versionCode = 1
@@ -24,7 +24,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -63,9 +64,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.com.google.android.material)
     implementation(libs.androidx.cardview)
-    
-    implementation(libs.mediapipe.tasks.text)
-    implementation(libs.mediapipe.tasks.audio)
+    implementation(libs.androidx.lifecycle.viewmodel)
 
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
@@ -74,6 +73,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
