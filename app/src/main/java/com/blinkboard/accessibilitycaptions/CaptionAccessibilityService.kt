@@ -1,4 +1,4 @@
-package com.example.accessibilitycaptions
+package com.blinkboard.accessibilitycaptions
 
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Color

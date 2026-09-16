@@ -1,4 +1,4 @@
-package com.example.accessibilitycaptions
+package com.blinkboard.accessibilitycaptions
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals

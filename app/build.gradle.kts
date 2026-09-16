@@ -9,11 +9,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.accessibilitycaptions"
+    namespace = "com.blinkboard.accessibilitycaptions"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.accessibilitycaptions"
+        applicationId = "com.blinkboard.accessibilitycaptions"
         minSdk = 29   // Android 10+ (shared mic support)
         targetSdk = 34
         versionCode = 1

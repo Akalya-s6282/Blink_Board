@@ -1,4 +1,4 @@
-package com.example.accessibilitycaptions.ui.theme
+package com.blinkboard.accessibilitycaptions.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

@@ -1,4 +1,4 @@
-package com.example.accessibilitycaptions
+package com.blinkboard.accessibilitycaptions
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -64,7 +64,7 @@ class CaptionService : Service() {
     companion object {
         const val CHANNEL_ID = "CaptionServiceChannel"
         const val NOTIFICATION_ID = 1
-        const val ACTION_STOP_SERVICE = "com.example.accessibilitycaptions.STOP_SERVICE"
+        const val ACTION_STOP_SERVICE = "com.blinkboard.accessibilitycaptions.STOP_SERVICE"
     }
 
     override fun onCreate() {

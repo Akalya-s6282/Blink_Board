@@ -1,4 +1,4 @@
-package com.example.accessibilitycaptions
+package com.blinkboard.accessibilitycaptions
 
 import android.Manifest
 import android.content.Intent
@@ -16,8 +16,8 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.accessibilitycaptions.ui.MainScreen
-import com.example.accessibilitycaptions.ui.theme.AccessibilityCaptionsTheme
+import com.blinkboard.accessibilitycaptions.ui.MainScreen
+import com.blinkboard.accessibilitycaptions.ui.theme.AccessibilityCaptionsTheme
 
 class MainActivity : ComponentActivity() {
 

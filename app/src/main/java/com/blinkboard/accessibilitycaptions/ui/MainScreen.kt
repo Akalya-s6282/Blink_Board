@@ -1,4 +1,4 @@
-package com.example.accessibilitycaptions.ui
+package com.blinkboard.accessibilitycaptions.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -52,8 +52,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.accessibilitycaptions.MainUiState
-import com.example.accessibilitycaptions.R
+import com.blinkboard.accessibilitycaptions.MainUiState
+import com.blinkboard.accessibilitycaptions.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
