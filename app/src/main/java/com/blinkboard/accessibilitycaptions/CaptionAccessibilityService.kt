@@ -103,8 +103,12 @@ class CaptionAccessibilityService : AccessibilityService() {
                 is CommandResult.PerformAction -> {
                     val performed = result.action(rootInActiveWindow)
                     if (!performed) {
-                        performGlobalAction(GLOBAL_ACTION_BACK)
+                        updateCaption("⚠️ ${result.failureMessage}", 4000)
                     }
+                }
+                is CommandResult.GoBack -> {
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    updateCaption("◀️ Navigated Back", 3000)
                 }
                 is CommandResult.ShowToast -> {
                     Toast.makeText(this@CaptionAccessibilityService, result.message, Toast.LENGTH_SHORT).show()

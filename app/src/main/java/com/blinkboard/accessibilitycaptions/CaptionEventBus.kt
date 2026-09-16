@@ -36,10 +36,14 @@ object CaptionEventBus {
         _isListening.value = listening
     }
 
-    fun emitSpokenText(text: String) {
+    fun emitSpokenText(text: String, isFinal: Boolean = true) {
         if (text.isNotBlank()) {
             if (_isCommandMode.value) {
-                emitVoiceCommand(text)
+                if (isFinal) {
+                    emitVoiceCommand(text)
+                } else {
+                    emitCaptionUpdate("🎤 $text...")
+                }
             } else {
                 emitCaptionUpdate(text)
             }

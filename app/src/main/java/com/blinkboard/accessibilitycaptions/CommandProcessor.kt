@@ -12,8 +12,12 @@ import kotlin.math.min
 
 sealed class CommandResult {
     data class UpdateCaption(val text: String, val durationMs: Long = 5000) : CommandResult()
-    data class PerformAction(val action: (root: AccessibilityNodeInfo?) -> Boolean) : CommandResult()
+    data class PerformAction(
+        val failureMessage: String = "Action could not be performed.",
+        val action: (root: AccessibilityNodeInfo?) -> Boolean
+    ) : CommandResult()
     data class ShowToast(val message: String) : CommandResult()
+    object GoBack : CommandResult()
     object Handled : CommandResult()
 }
 
@@ -24,6 +28,11 @@ class CommandProcessor(private val context: Context? = null) {
 
     private var pendingTargetText: String? = null
     private var pendingActionType: PendingActionType? = null
+    private var pendingTimestamp: Long = 0L
+
+    companion object {
+        private const val CONFIRMATION_TIMEOUT_MS = 10_000L
+    }
 
     enum class PendingActionType {
         CLICK_MATCH,
@@ -39,8 +48,15 @@ class CommandProcessor(private val context: Context? = null) {
         if (confirmCommands.any { trimmedCommand == it }) {
             val target = pendingTargetText
             val actionType = pendingActionType
+            val timestamp = pendingTimestamp
             pendingTargetText = null
             pendingActionType = null
+            pendingTimestamp = 0L
+
+            val currentTime = System.currentTimeMillis()
+            if (timestamp > 0 && currentTime - timestamp > CONFIRMATION_TIMEOUT_MS) {
+                return@withContext CommandResult.UpdateCaption("⚠️ Confirmation request expired.")
+            }
 
             return@withContext when (actionType) {
                 PendingActionType.CLICK_MATCH -> {
@@ -73,9 +89,20 @@ class CommandProcessor(private val context: Context? = null) {
             }
         }
 
-        // Reset pending target if new non-confirm command is issued
-        pendingTargetText = null
-        pendingActionType = null
+        // Reset pending target only if a recognized new command is issued
+        val isKnownCommand = trimmedCommand == "show elements" ||
+                clickCommands.any { trimmedCommand.startsWith(it) } ||
+                trimmedCommand.startsWith("type") ||
+                trimmedCommand.startsWith("open") ||
+                trimmedCommand.startsWith("scroll") ||
+                trimmedCommand == "go back" ||
+                trimmedCommand.contains("end call")
+
+        if (isKnownCommand) {
+            pendingTargetText = null
+            pendingActionType = null
+            pendingTimestamp = 0L
+        }
 
         when {
             trimmedCommand == "show elements" -> {
@@ -100,7 +127,9 @@ class CommandProcessor(private val context: Context? = null) {
             trimmedCommand.startsWith("type") -> {
                 val textToType = trimmedCommand.substringAfter("type").trim()
                 if (textToType.isNotEmpty()) {
-                    CommandResult.PerformAction { root ->
+                    CommandResult.PerformAction(
+                        failureMessage = "No focused editable input field found. Tap an input field first."
+                    ) { root ->
                         val inputNode = findFocusedEditableNode(root)
                         if (inputNode != null) {
                             val arguments = Bundle().apply {
@@ -124,7 +153,9 @@ class CommandProcessor(private val context: Context? = null) {
             }
             trimmedCommand.startsWith("scroll") -> {
                 val direction = if (trimmedCommand.contains("up")) "up" else "down"
-                CommandResult.PerformAction { root ->
+                CommandResult.PerformAction(
+                    failureMessage = "No scrollable area found on screen."
+                ) { root ->
                     val scrollableNode = findScrollableNode(root)
                     if (scrollableNode != null) {
                         val action = if (direction == "up") {
@@ -139,13 +170,14 @@ class CommandProcessor(private val context: Context? = null) {
                 }
             }
             trimmedCommand == "go back" -> {
-                CommandResult.PerformAction { false } // AccessibilityService performs GLOBAL_ACTION_BACK
+                CommandResult.GoBack
             }
             trimmedCommand.contains("end call") -> {
                 val endButton = findNodeByTextOrDescription(rootNode, "end")
                 if (endButton != null) {
                     pendingTargetText = "end"
                     pendingActionType = PendingActionType.END_CALL
+                    pendingTimestamp = System.currentTimeMillis()
                     CommandResult.UpdateCaption("Say 'confirm' or 'yes' to end call", 8000)
                 } else {
                     CommandResult.ShowToast("End call button not found.")
@@ -156,47 +188,94 @@ class CommandProcessor(private val context: Context? = null) {
     }
 
     private fun handleInteraction(target: String, rootNode: AccessibilityNodeInfo?): CommandResult {
-        if (rootNode == null) return CommandResult.ShowToast("No active window found.")
+        if (rootNode == null) return CommandResult.UpdateCaption("⚠️ No active window found.")
 
         val interactiveNodes = findInteractiveNodes(rootNode)
-        val bestMatch = findBestMatch(target, interactiveNodes) { it.text ?: it.contentDescription }
+        if (interactiveNodes.isEmpty()) {
+            return CommandResult.UpdateCaption("⚠️ No interactive elements found on screen.")
+        }
 
-        return if (bestMatch != null) {
-            val bestMatchLabel = (bestMatch.text ?: bestMatch.contentDescription).toString().lowercase()
-            val distance = levenshtein(target, bestMatchLabel)
-            if (distance < 3) {
-                bestMatch.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                CommandResult.UpdateCaption("Clicked '$bestMatchLabel'")
-            } else {
+        // Tier 1: Case-insensitive exact match
+        val exactMatch = interactiveNodes.find { node ->
+            val label = (node.text ?: node.contentDescription)?.toString()?.trim()
+            label.equals(target, ignoreCase = true)
+        }
+        if (exactMatch != null) {
+            val label = (exactMatch.text ?: exactMatch.contentDescription).toString()
+            exactMatch.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            return CommandResult.UpdateCaption("✅ Clicked '$label'")
+        }
+
+        // Tier 2: Case-insensitive substring match
+        val substringMatches = interactiveNodes.filter { node ->
+            val label = (node.text ?: node.contentDescription)?.toString()?.trim() ?: ""
+            label.contains(target, ignoreCase = true)
+        }
+        if (substringMatches.isNotEmpty()) {
+            val bestSubstring = substringMatches.minByOrNull { (it.text ?: it.contentDescription)?.length ?: Int.MAX_VALUE }!!
+            val label = (bestSubstring.text ?: bestSubstring.contentDescription).toString()
+            bestSubstring.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            return CommandResult.UpdateCaption("✅ Clicked '$label'")
+        }
+
+        // Tier 3: Strict Levenshtein distance match (distance <= 2)
+        val bestMatch = findBestMatch(target, interactiveNodes) { it.text ?: it.contentDescription }
+        if (bestMatch != null) {
+            val bestMatchLabel = (bestMatch.text ?: bestMatch.contentDescription).toString()
+            val distance = levenshtein(target, bestMatchLabel.lowercase())
+            if (distance <= 2) {
                 pendingTargetText = bestMatchLabel
                 pendingActionType = PendingActionType.CLICK_MATCH
-                CommandResult.UpdateCaption("Did you mean: '$bestMatchLabel'? Say 'confirm' to click.", 10000)
+                pendingTimestamp = System.currentTimeMillis()
+                return CommandResult.UpdateCaption("❓ Did you mean: '$bestMatchLabel'? Say 'confirm' to click.", 10000)
             }
-        } else {
-            CommandResult.ShowToast("Element '$target' not found.")
         }
+
+        // Tier 4: Target not found
+        return CommandResult.UpdateCaption("❌ Element '$target' not found on screen.")
     }
 
     private fun handleOpenCommand(appName: String): CommandResult {
         val ctx = context ?: return CommandResult.ShowToast("Context unavailable.")
-        val intent = when (appName) {
-            "settings" -> Intent(Settings.ACTION_SETTINGS)
-            "chrome" -> ctx.packageManager.getLaunchIntentForPackage("com.android.chrome")
-            "camera" -> Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-            "notes" -> ctx.packageManager.getLaunchIntentForPackage("com.google.android.keep")
-            "google" -> ctx.packageManager.getLaunchIntentForPackage("com.google.android.googlequicksearchbox")
-            else -> null
+        if (appName.isEmpty()) return CommandResult.ShowToast("Please specify an app to open.")
+
+        // System app shortcuts
+        if (appName == "settings") {
+            return launchIntent(Intent(Settings.ACTION_SETTINGS), "Settings")
+        } else if (appName == "camera") {
+            return launchIntent(Intent(MediaStore.ACTION_IMAGE_CAPTURE), "Camera")
         }
-        return if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            try {
-                ctx.startActivity(intent)
-                CommandResult.UpdateCaption("Opening $appName...")
-            } catch (e: Exception) {
-                CommandResult.ShowToast("Could not open $appName.")
+
+        // Dynamic search across all installed launcher apps
+        val pm = ctx.packageManager
+        val mainIntent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+        val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+
+        val matchedApp = resolveInfos.find { resolveInfo ->
+            val label = resolveInfo.loadLabel(pm).toString().lowercase()
+            label == appName || label.contains(appName)
+        }
+
+        if (matchedApp != null) {
+            val packageName = matchedApp.activityInfo.packageName
+            val launchIntent = pm.getLaunchIntentForPackage(packageName)
+            if (launchIntent != null) {
+                val appLabel = matchedApp.loadLabel(pm).toString()
+                return launchIntent(launchIntent, appLabel)
             }
-        } else {
-            CommandResult.ShowToast("App '$appName' not found.")
+        }
+
+        return CommandResult.ShowToast("App '$appName' not found.")
+    }
+
+    private fun launchIntent(intent: Intent, label: String): CommandResult {
+        val ctx = context ?: return CommandResult.ShowToast("Context unavailable.")
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            ctx.startActivity(intent)
+            CommandResult.UpdateCaption("🚀 Opening $label...")
+        } catch (e: Exception) {
+            CommandResult.ShowToast("Could not open $label.")
         }
     }
 
