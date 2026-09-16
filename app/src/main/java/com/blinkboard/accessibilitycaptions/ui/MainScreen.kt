@@ -3,6 +3,7 @@ package com.blinkboard.accessibilitycaptions.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
@@ -40,8 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -51,9 +52,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.blinkboard.accessibilitycaptions.MainUiState
 import com.blinkboard.accessibilitycaptions.R
+import com.blinkboard.accessibilitycaptions.ui.theme.AccessibilityCaptionsTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,34 +108,35 @@ fun MainScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Permission Status Card with Chips
+            // System Readiness Card
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.elevatedCardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
                         text = "System Readiness",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     HorizontalDivider()
 
-                    PermissionChipRow(
+                    PermissionStatusRow(
                         label = "Accessibility Service",
                         isGranted = uiState.isAccessibilityEnabled
                     )
-                    PermissionChipRow(
+                    PermissionStatusRow(
                         label = "Overlay Permission",
                         isGranted = uiState.isOverlayGranted
                     )
-                    PermissionChipRow(
+                    PermissionStatusRow(
                         label = "Microphone Permission",
                         isGranted = uiState.isAudioPermissionGranted
                     )
@@ -376,7 +380,7 @@ fun MainScreen(
 }
 
 @Composable
-private fun PermissionChipRow(label: String, isGranted: Boolean) {
+private fun PermissionStatusRow(label: String, isGranted: Boolean) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -385,34 +389,59 @@ private fun PermissionChipRow(label: String, isGranted: Boolean) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface
         )
 
-        val chipContainerColor = if (isGranted) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
-        val chipContentColor = if (isGranted) Color(0xFF2E7D32) else Color(0xFFC62828)
+        val badgeContainerColor = if (isGranted) Color(0xFFEAF5EA) else Color(0xFFFDE8E8)
+        val badgeBorderColor = if (isGranted) Color(0xFFC8E6C9) else Color(0xFFFFCDD2)
+        val badgeContentColor = if (isGranted) Color(0xFF2E7D32) else Color(0xFFC62828)
 
-        SuggestionChip(
-            onClick = {},
-            enabled = false,
-            label = {
-                Text(
-                    text = if (isGranted) "Granted" else "Required",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = chipContentColor
-                )
-            },
-            icon = {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = badgeContainerColor,
+            border = BorderStroke(1.dp, badgeBorderColor)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Icon(
                     imageVector = if (isGranted) Icons.Default.CheckCircle else Icons.Default.Warning,
                     contentDescription = null,
-                    tint = chipContentColor,
-                    modifier = Modifier.size(16.dp)
+                    tint = badgeContentColor,
+                    modifier = Modifier.size(18.dp)
                 )
-            },
-            colors = SuggestionChipDefaults.suggestionChipColors(
-                disabledContainerColor = chipContainerColor
-            )
+                Text(
+                    text = if (isGranted) "Granted" else "Required",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = badgeContentColor
+                )
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun MainScreenPreview() {
+    AccessibilityCaptionsTheme {
+        MainScreen(
+            uiState = MainUiState(
+                isAccessibilityEnabled = true,
+                isOverlayGranted = true,
+                isAudioPermissionGranted = true,
+                isCommandMode = false,
+                isListening = false
+            ),
+            onEnableAccessibilityClicked = {},
+            onStartListeningClicked = {},
+            onStopListeningClicked = {},
+            onCommandModeToggled = {},
+            onDisclosureAccepted = {},
+            onDisclosureDismissed = {}
         )
     }
 }

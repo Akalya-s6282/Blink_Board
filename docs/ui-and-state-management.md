@@ -173,12 +173,16 @@ Displays real-time chips indicating the status of required system permissions:
 - **Microphone Permission** (`RECORD_AUDIO`)
 
 ```kotlin
-ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-    Column(modifier = Modifier.padding(16.dp)) {
-        Text("System Readiness", style = MaterialTheme.typography.titleMedium)
-        PermissionChipRow("Accessibility Service", uiState.isAccessibilityEnabled)
-        PermissionChipRow("Overlay Permission", uiState.isOverlayGranted)
-        PermissionChipRow("Microphone Permission", uiState.isAudioPermissionGranted)
+ElevatedCard(
+    modifier = Modifier.fillMaxWidth(),
+    shape = RoundedCornerShape(16.dp)
+) {
+    Column(modifier = Modifier.padding(20.dp)) {
+        Text("System Readiness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        HorizontalDivider()
+        PermissionStatusRow("Accessibility Service", uiState.isAccessibilityEnabled)
+        PermissionStatusRow("Overlay Permission", uiState.isOverlayGranted)
+        PermissionStatusRow("Microphone Permission", uiState.isAudioPermissionGranted)
     }
 }
 ```
