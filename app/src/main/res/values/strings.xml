@@ -38,4 +38,9 @@
     <string name="service_notification_title">Caption Service Active</string>
     <string name="service_notification_text">Listening for speech and commands</string>
     <string name="caption_text">🗣 %1$s</string>
+    <string name="accessibility_service_initialized">Accessibility Service Initialized</string>
+    <string name="prominent_disclosure_title">Accessibility &amp; Audio Consent</string>
+    <string name="prominent_disclosure_message">Accessibility Captions uses Accessibility Services and Microphone audio to display real-time video captions and execute voice commands (e.g. clicking buttons, scrolling, ending calls).\n\n• No audio or screen content is stored or transmitted.\n• Data is processed entirely on-device.\n• You can disable this service at any time in Settings.</string>
+    <string name="action_agree">Agree &amp; Continue</string>
+    <string name="action_cancel">Cancel</string>
 </resources>

@@ -15,14 +15,20 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.ToggleButton
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-    private val TAG = "MainActivity"
+    private val tag = "MainActivity"
+    private val viewModel: MainViewModel by viewModels()
     private var speechRecognizer: SpeechRecognizer? = null
-    private var isCommandMode = false
 
     private val speechRecognizerIntent by lazy {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -37,7 +43,7 @@ class MainActivity : AppCompatActivity() {
             if (isGranted) {
                 startSpeechRecognition()
             } else {
-                Toast.makeText(this, "Microphone permission is required for voice control.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Microphone permission is required for captions.", Toast.LENGTH_LONG).show()
             }
         }
 
@@ -49,9 +55,21 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnStartService).setOnClickListener { handleStartListeningClick() }
         findViewById<Button>(R.id.btnStopService).setOnClickListener { stopSpeechRecognition() }
         findViewById<ToggleButton>(R.id.toggleCommandMode).setOnCheckedChangeListener { _, isChecked ->
-            isCommandMode = isChecked
+            viewModel.setCommandMode(isChecked)
             val mode = if (isChecked) "Command" else "Caption"
             Toast.makeText(this, "Switched to $mode Mode", Toast.LENGTH_SHORT).show()
+        }
+
+        observeViewModel()
+    }
+
+    private fun observeViewModel() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    updateStatusUi(state)
+                }
+            }
         }
     }
 
@@ -73,12 +91,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
         speechRecognizer?.startListening(speechRecognizerIntent)
+        viewModel.setListening(true)
         Toast.makeText(this, "Listening...", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopSpeechRecognition() {
         speechRecognizer?.destroy()
         speechRecognizer = null
+        viewModel.setListening(false)
         Toast.makeText(this, "Stopped listening.", Toast.LENGTH_SHORT).show()
     }
 
@@ -86,20 +106,29 @@ class MainActivity : AppCompatActivity() {
         return object : RecognitionListener {
             override fun onResults(results: Bundle?) {
                 val spokenText = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.get(0) ?: ""
-                if (spokenText.isNotEmpty()) sendBroadcastForProcessing(spokenText)
+                if (spokenText.isNotEmpty()) {
+                    viewModel.onSpokenTextRecognized(spokenText)
+                }
                 restartListening()
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
                 val spokenText = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.get(0) ?: ""
-                if (spokenText.isNotEmpty()) sendBroadcastForProcessing(spokenText)
+                if (spokenText.isNotEmpty()) {
+                    viewModel.onSpokenTextRecognized(spokenText)
+                }
             }
 
             override fun onError(error: Int) {
                 val errorMessage = getErrorText(error)
-                Log.e(TAG, "Speech recognition error: $error - $errorMessage")
-                if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                Log.e(tag, "Speech recognition error: $error - $errorMessage")
+
+                val shouldRetry = viewModel.handleSpeechError()
+                if (shouldRetry && (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
                     restartListening()
+                } else if (!shouldRetry) {
+                    Toast.makeText(this@MainActivity, "Speech recognition stopped due to repeated errors.", Toast.LENGTH_SHORT).show()
+                    stopSpeechRecognition()
                 }
             }
 
@@ -113,26 +142,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restartListening() {
-        if (speechRecognizer != null) {
+        if (speechRecognizer != null && viewModel.uiState.value.isListening) {
             speechRecognizer?.startListening(speechRecognizerIntent)
         }
     }
 
-    private fun sendBroadcastForProcessing(text: String) {
-        val intentAction = if (isCommandMode) "VOICE_COMMAND" else "CAPTION_UPDATE"
-        val extraName = if (isCommandMode) "command" else "caption_text"
-
-        val intent = Intent(intentAction).apply {
-            putExtra(extraName, text)
-            setPackage(this@MainActivity.packageName)
-        }
-        sendBroadcast(intent)
-        Log.d(TAG, "Explicit broadcast sent: Action=$intentAction, Text='$text'")
-    }
-
     override fun onResume() {
         super.onResume()
-        updateStatus()
+        viewModel.updatePermissions(
+            accessibilityEnabled = isAccessibilityEnabled(),
+            overlayGranted = canDrawOverlays(),
+            audioGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        )
     }
 
     override fun onDestroy() {
@@ -142,8 +163,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAllPermissions() {
         if (!isAccessibilityEnabled()) {
-            Toast.makeText(this, "Please enable the accessibility service", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            showProminentDisclosureDialog {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
         } else if (!canDrawOverlays()) {
             requestOverlayPermission()
         } else {
@@ -151,27 +173,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateStatus() {
+    private fun showProminentDisclosureDialog(onAccepted: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.prominent_disclosure_title)
+            .setMessage(R.string.prominent_disclosure_message)
+            .setPositiveButton(R.string.action_agree) { dialog, _ ->
+                dialog.dismiss()
+                onAccepted()
+            }
+            .setNegativeButton(R.string.action_cancel) { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun updateStatusUi(state: MainUiState) {
         val statusView = findViewById<TextView>(R.id.tvStatus)
-        val accessibilityEnabled = isAccessibilityEnabled()
-        val overlayEnabled = canDrawOverlays()
-        statusView.text = "Accessibility Service: ${if (accessibilityEnabled) "Enabled" else "Disabled"}\nOverlay Permission: ${if (overlayEnabled) "Granted" else "Not Granted"}"
+        val accessibilityText = if (state.isAccessibilityEnabled) "Enabled" else "Disabled"
+        val overlayText = if (state.isOverlayGranted) "Granted" else "Not Granted"
+        val micText = if (state.isAudioPermissionGranted) "Granted" else "Not Granted"
+
+        statusView.text = "Accessibility Service: $accessibilityText\nOverlay Permission: $overlayText\nMicrophone Permission: $micText"
     }
 
     private fun isAccessibilityEnabled(): Boolean {
-        // Rewritten to be extremely explicit to avoid IDE parser errors.
         val serviceId = "${packageName}/${CaptionAccessibilityService::class.java.canonicalName}"
         val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-
-        if (enabledServices == null) {
-            return false
-        }
+            ?: return false
 
         return enabledServices.contains(serviceId, ignoreCase = true)
     }
 
     private fun canDrawOverlays(): Boolean {
-        // This is a standard call and should not cause issues.
         return Settings.canDrawOverlays(this)
     }
 
@@ -181,7 +215,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getErrorText(errorCode: Int): String {
-        // Rewritten to be extremely explicit to avoid IDE parser errors.
         return when (errorCode) {
             SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
             SpeechRecognizer.ERROR_CLIENT -> "Client side error"
