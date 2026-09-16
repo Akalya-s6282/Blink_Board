@@ -51,10 +51,14 @@ object CaptionEventBus {
     }
 
     fun emitCaptionUpdate(text: String) {
-        _events.tryEmit(CaptionEvent.CaptionUpdate(text))
+        if (text.isNotBlank()) {
+            _events.tryEmit(CaptionEvent.CaptionUpdate(text))
+        }
     }
 
     fun emitVoiceCommand(command: String) {
-        _events.tryEmit(CaptionEvent.VoiceCommand(command))
+        if (command.isNotBlank()) {
+            _events.tryEmit(CaptionEvent.VoiceCommand(command))
+        }
     }
 }

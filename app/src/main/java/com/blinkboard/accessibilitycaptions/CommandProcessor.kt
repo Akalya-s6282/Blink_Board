@@ -236,8 +236,8 @@ class CommandProcessor(private val context: Context? = null) {
     }
 
     private fun handleOpenCommand(appName: String): CommandResult {
-        val ctx = context ?: return CommandResult.ShowToast("Context unavailable.")
         if (appName.isEmpty()) return CommandResult.ShowToast("Please specify an app to open.")
+        val ctx = context ?: return CommandResult.ShowToast("Context unavailable.")
 
         // System app shortcuts
         if (appName == "settings") {
