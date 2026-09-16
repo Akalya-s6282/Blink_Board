@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.TextView
@@ -49,9 +50,9 @@ class CaptionAccessibilityService : AccessibilityService() {
         captionView = TextView(this).apply {
             textSize = 18f
             setTextColor(Color.WHITE)
-            setBackgroundColor("#AA000000".toColorInt())
-            setPadding(24, 24, 24, 24)
-            text = getString(R.string.accessibility_service_initialized)
+            setBackgroundColor("#CC111318".toColorInt())
+            setPadding(32, 24, 32, 32)
+            visibility = View.GONE
         }
         try {
             windowManager?.addView(captionView, params)
@@ -77,9 +78,17 @@ class CaptionAccessibilityService : AccessibilityService() {
 
     private fun updateCaption(text: String, durationMs: Long) {
         captionView?.post {
-            captionView?.text = text
-            captionView?.removeCallbacks(null)
-            captionView?.postDelayed({ captionView?.text = "" }, durationMs)
+            if (text.isNotBlank()) {
+                captionView?.text = text
+                captionView?.visibility = View.VISIBLE
+                captionView?.removeCallbacks(null)
+                captionView?.postDelayed({
+                    captionView?.text = ""
+                    captionView?.visibility = View.GONE
+                }, durationMs)
+            } else {
+                captionView?.visibility = View.GONE
+            }
         }
     }
 
