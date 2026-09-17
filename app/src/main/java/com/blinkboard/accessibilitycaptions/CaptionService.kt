@@ -278,7 +278,7 @@ class CaptionService : Service() {
             if (useInCallMode) {
                 startInCallCapture()
             } else {
-                startMicrophoneCapture()
+                Log.d(tag, "Using SpeechRecognizer for MIC capture. Manual AudioRecord disabled.")
             }
         }, 1000)
     }
@@ -287,40 +287,11 @@ class CaptionService : Service() {
         if (isInPhoneCall) {
             startInCallCapture()
         } else {
-            startMicrophoneCapture()
+            Log.d(tag, "Using SpeechRecognizer for MIC capture. Manual AudioRecord disabled.")
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun startMicrophoneCapture(): Boolean {
-        Log.d(tag, "Attempting to start microphone capture...")
-        try {
-            audioRecord = AudioRecord.Builder()
-                .setAudioSource(MediaRecorder.AudioSource.MIC)
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(audioFormat)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(channelConfig)
-                        .build()
-                )
-                .setBufferSizeInBytes(bufferSize)
-                .build()
 
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(tag, "Microphone AudioRecord not initialized")
-                return false
-            }
-            audioRecord?.startRecording()
-            isCapturing.set(true)
-            audioCaptureThread = thread { processAudioStream("MIC") }
-            Log.d(tag, "Microphone capture started successfully")
-            return true
-        } catch (e: Exception) {
-            Log.e(tag, "Failed to start microphone capture: ", e)
-            return false
-        }
-    }
 
     @SuppressLint("MissingPermission")
     private fun startInCallCapture(): Boolean {
