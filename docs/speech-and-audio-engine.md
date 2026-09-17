@@ -71,7 +71,16 @@ private val speechRecognizerIntent by lazy {
 }
 ```
 
-### 3. Speech Recognizer Event Handling & Auto-Restart
+### 4. Package Visibility (API 30+)
+To ensure the `SpeechRecognizer.createSpeechRecognizer(this)` call successfully finds the system speech service on Android 11+, the `AndroidManifest.xml` explicitly declares package visibility:
+
+```xml
+<queries>
+    <intent>
+        <action android:name="android.speech.RecognitionService" />
+    </intent>
+</queries>
+```
 Because standard Android `SpeechRecognizer` instances automatically stop after silence or speech completion, `CaptionService` implements an continuous loop using `RecognitionListener`:
 
 ```kotlin
@@ -160,29 +169,15 @@ private fun handleCallStateChange(state: Int) {
       ┌─────────────────────────────┐ ┌─────────────────────────────┐
       │     In-Call Audio Mode      │ │   Microphone Audio Mode     │
       ├─────────────────────────────┤ ├─────────────────────────────┤
-      │ MediaProjection +           │ │ MediaRecorder.AudioSource   │
-      │ AudioPlaybackCaptureConfig  │ │ .MIC                        │
-      │ USAGE_VOICE_COMMUNICATION   │ │ Sample Rate: 16kHz Mono     │
-      │ Format: PCM 16-bit Mono     │ │ Format: PCM 16-bit          │
+      │ MediaProjection +           │ │ Managed via                 │
+      │ AudioPlaybackCaptureConfig  │ │ SpeechRecognizer internal   │
+      │ USAGE_VOICE_COMMUNICATION   │ │ audio capture               │
+      │ Format: PCM 16-bit Mono     │ │                             │
       └─────────────────────────────┘ └─────────────────────────────┘
 ```
 
-### 1. Microphone Capture (`startMicrophoneCapture`)
-Captures ambient voice directly via the device hardware microphone:
-
-```kotlin
-audioRecord = AudioRecord.Builder()
-    .setAudioSource(MediaRecorder.AudioSource.MIC)
-    .setAudioFormat(
-        AudioFormat.Builder()
-            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-            .setSampleRate(16000)
-            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-            .build()
-    )
-    .setBufferSizeInBytes(bufferSize)
-    .build()
-```
+### 1. Microphone Capture via SpeechRecognizer
+Captures ambient voice directly via the device hardware microphone. In standard mode, we rely entirely on the system's `SpeechRecognizer` to manage microphone access and buffer processing. (Raw `AudioRecord` microphone capture was removed to prevent hardware lock contention with the speech recognition engine).
 
 ### 2. In-Call Audio Playback Capture (`startInCallCapture`)
 Captures incoming voice audio during telephony or VoIP sessions using `AudioPlaybackCaptureConfiguration` (requires `minSdk = 29` / Android 10+):
