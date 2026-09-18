@@ -46,18 +46,24 @@ private fun startForegroundServiceNotification() {
 ## 🗣️ Speech Recognition Pipeline
 
 ### 1. Engine Initialization Strategy
-`CaptionService` prefers on-device speech recognition to lower latency and allow offline operation, falling back to system-wide speech recognizer when unavailable:
+`CaptionService` leverages the platform's central `SpeechRecognizer` factory mapping to guarantee high system stability. On Android 11+ (API 30+), strict query visibility intent filters must be declared inside the `AndroidManifest.xml` to successfully discover and communicate with the underlying default speech provider engine without incurring permission failures:
+
+```xml
+<queries>
+    <!-- Essential for Android 11+ package discovery of speech providers -->
+    <intent>
+        <action android:name="android.speech.RecognitionService" />
+    </intent>
+</queries>
+```
+
+The system instantiates standard speech recognition capabilities dynamically:
 
 ```kotlin
-speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-    SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-) {
-    Log.d(tag, "Using On-Device Speech Recognizer")
-    SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-} else {
-    Log.d(tag, "Using System Speech Recognizer")
-    SpeechRecognizer.createSpeechRecognizer(this)
+speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+    setRecognitionListener(createRecognitionListener())
 }
+Log.d(tag, "Using System Speech Recognizer")
 ```
 
 ### 2. Speech Recognizer Intent Configuration

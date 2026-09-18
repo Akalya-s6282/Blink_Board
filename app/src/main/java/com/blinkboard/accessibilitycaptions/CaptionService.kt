@@ -112,17 +112,11 @@ class CaptionService : Service() {
         mainHandler.post {
             if (speechRecognizer == null) {
                 try {
-                    speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                        SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
-                    ) {
-                        Log.d(tag, "Using On-Device Speech Recognizer in Service")
-                        SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-                    } else {
-                        Log.d(tag, "Using System Speech Recognizer in Service")
-                        SpeechRecognizer.createSpeechRecognizer(this)
-                    }.apply {
+                    // Fallback to regular standard system SpeechRecognizer if on-device model package is unavailable/not-downloaded yet (Error 13)
+                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
                         setRecognitionListener(createRecognitionListener())
                     }
+                    Log.d(tag, "Using System Speech Recognizer in Service")
                 } catch (e: Exception) {
                     Log.e(tag, "Error creating SpeechRecognizer", e)
                     CaptionEventBus.setListening(false)
