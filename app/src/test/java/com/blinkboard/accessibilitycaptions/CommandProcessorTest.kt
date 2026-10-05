@@ -195,4 +195,20 @@ class CommandProcessorTest {
         val node = processor.findMatchingNode(null, "submit")
         assertNull(node)
     }
+
+    // --- Target Normalization & Filler Word Stripping Tests ---
+
+    @Test
+    fun testCleanTargetFillerWords() {
+        assertEquals("submit", processor.cleanTarget("on the submit button"))
+        assertEquals("search", processor.cleanTarget("click on the search icon"))
+        assertEquals("login", processor.cleanTarget("please tap on a login field"))
+    }
+
+    @Test
+    fun testLevenshteinAllocFreeDistance() {
+        assertEquals(0, processor.levenshtein("Camera", "camera"))
+        assertEquals(1, processor.levenshtein("settins", "settings"))
+        assertEquals(2, processor.levenshtein("submti", "submit"))
+    }
 }

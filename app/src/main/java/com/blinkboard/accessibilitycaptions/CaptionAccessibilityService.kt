@@ -33,7 +33,7 @@ class CaptionAccessibilityService : AccessibilityService() {
         commandProcessor = CommandProcessor(this)
         setupCaptionOverlay()
         observeEvents()
-        Toast.makeText(this, "Caption & Voice Command Service Active", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Tovact Voice Command Service Active", Toast.LENGTH_SHORT).show()
     }
 
     private fun setupCaptionOverlay() {
@@ -76,16 +76,18 @@ class CaptionAccessibilityService : AccessibilityService() {
         }
     }
 
+    private val dismissRunnable = Runnable {
+        captionView?.text = ""
+        captionView?.visibility = View.GONE
+    }
+
     private fun updateCaption(text: String, durationMs: Long) {
         captionView?.post {
+            captionView?.removeCallbacks(dismissRunnable)
             if (text.isNotBlank()) {
                 captionView?.text = text
                 captionView?.visibility = View.VISIBLE
-                captionView?.removeCallbacks(null)
-                captionView?.postDelayed({
-                    captionView?.text = ""
-                    captionView?.visibility = View.GONE
-                }, durationMs)
+                captionView?.postDelayed(dismissRunnable, durationMs)
             } else {
                 captionView?.visibility = View.GONE
             }
@@ -103,19 +105,54 @@ class CaptionAccessibilityService : AccessibilityService() {
                 is CommandResult.PerformAction -> {
                     val performed = result.action(rootInActiveWindow)
                     if (!performed) {
-                        updateCaption("⚠️ ${result.failureMessage}", 4000)
+                        val cleanCmd = command.lowercase().trim()
+                        if (cleanCmd.contains("scroll")) {
+                            val direction = if (cleanCmd.contains("up")) "up" else "down"
+                            val gesturePerformed = performScrollGesture(direction)
+                            if (gesturePerformed) {
+                                updateCaption("📜 Scrolled $direction", 2000)
+                            } else {
+                                updateCaption("⚠️ ${result.failureMessage}", 4000)
+                            }
+                        } else {
+                            updateCaption("⚠️ ${result.failureMessage}", 4000)
+                        }
                     }
                 }
                 is CommandResult.GoBack -> {
-                    performGlobalAction(GLOBAL_ACTION_BACK)
-                    updateCaption("◀️ Navigated Back", 3000)
+                    val success = performGlobalAction(GLOBAL_ACTION_BACK)
+                    if (success) {
+                        updateCaption("◀️ Navigated Back", 3000)
+                    } else {
+                        updateCaption("⚠️ Could not perform back navigation", 3000)
+                    }
                 }
                 is CommandResult.ShowToast -> {
-                    Toast.makeText(this@CaptionAccessibilityService, result.message, Toast.LENGTH_SHORT).show()
+                    updateCaption("⚠️ ${result.message}", 4000)
                 }
                 CommandResult.Handled -> {}
             }
         }
+    }
+
+    private fun performScrollGesture(direction: String): Boolean {
+        val displayMetrics = resources.displayMetrics
+        val width = displayMetrics.widthPixels
+        val height = displayMetrics.heightPixels
+
+        val startX = width / 2f
+        val startY = if (direction == "down") height * 0.7f else height * 0.3f
+        val endY = if (direction == "down") height * 0.3f else height * 0.7f
+
+        val path = android.graphics.Path().apply {
+            moveTo(startX, startY)
+            lineTo(startX, endY)
+        }
+
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 300)
+        val gesture = android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build()
+
+        return dispatchGesture(gesture, null, null)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}

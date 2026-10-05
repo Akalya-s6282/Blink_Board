@@ -42,6 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,7 +68,10 @@ fun MainScreen(
     onStopListeningClicked: () -> Unit,
     onCommandModeToggled: (Boolean) -> Unit,
     onDisclosureAccepted: () -> Unit,
-    onDisclosureDismissed: () -> Unit
+    onDisclosureDismissed: () -> Unit,
+    onAccessibilityRowClicked: () -> Unit = {},
+    onOverlayRowClicked: () -> Unit = {},
+    onMicrophoneRowClicked: () -> Unit = {}
 ) {
     val allPermissionsGranted = uiState.isAccessibilityEnabled &&
             uiState.isOverlayGranted &&
@@ -120,25 +124,51 @@ fun MainScreen(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text(
-                        text = "System Readiness",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "System Readiness",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        val overallStatusText = if (allPermissionsGranted) "System Ready" else "Action Needed"
+                        val overallContainerColor = if (allPermissionsGranted) Color(0xFFEAF5EA) else Color(0xFFFFF3E0)
+                        val overallContentColor = if (allPermissionsGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = overallContainerColor
+                        ) {
+                            Text(
+                                text = overallStatusText,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = overallContentColor
+                            )
+                        }
+                    }
                     HorizontalDivider()
 
                     PermissionStatusRow(
                         label = "Accessibility Service",
-                        isGranted = uiState.isAccessibilityEnabled
+                        isGranted = uiState.isAccessibilityEnabled,
+                        onClick = onAccessibilityRowClicked
                     )
                     PermissionStatusRow(
                         label = "Overlay Permission",
-                        isGranted = uiState.isOverlayGranted
+                        isGranted = uiState.isOverlayGranted,
+                        onClick = onOverlayRowClicked
                     )
                     PermissionStatusRow(
                         label = "Microphone Permission",
-                        isGranted = uiState.isAudioPermissionGranted
+                        isGranted = uiState.isAudioPermissionGranted,
+                        onClick = onMicrophoneRowClicked
                     )
                 }
             }
@@ -380,9 +410,19 @@ fun MainScreen(
 }
 
 @Composable
-private fun PermissionStatusRow(label: String, isGranted: Boolean) {
+private fun PermissionStatusRow(
+    label: String,
+    isGranted: Boolean,
+    onClick: (() -> Unit)? = null
+) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else Modifier
+            ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {

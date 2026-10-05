@@ -29,9 +29,15 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
@@ -52,12 +58,18 @@ class CaptionService : Service() {
 
     private var speechRecognizer: SpeechRecognizer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private lateinit var commandProcessor: CommandProcessor
 
     private val speechRecognizerIntent by lazy {
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 400L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 400L)
         }
     }
 
@@ -70,9 +82,42 @@ class CaptionService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        commandProcessor = CommandProcessor(this)
+        observeEvents()
         bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
         setupPhoneStateListener()
+    }
+
+    private fun observeEvents() {
+        serviceScope.launch {
+            CaptionEventBus.events.collect { event ->
+                if (event is CaptionEvent.VoiceCommand) {
+                    Log.d(tag, "CaptionService received VoiceCommand: '${event.command}'")
+                    val cmd = event.command.lowercase().trim()
+                    if (cmd.startsWith("open")) {
+                        val result = commandProcessor.processCommand(event.command, null)
+                        when (result) {
+                            is CommandResult.UpdateCaption -> {
+                                mainHandler.post {
+                                    Toast.makeText(applicationContext, result.text, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            is CommandResult.ShowToast -> {
+                                mainHandler.post {
+                                    Toast.makeText(applicationContext, result.message, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            else -> {}
+                        }
+                    } else {
+                        mainHandler.post {
+                            Toast.makeText(applicationContext, "🎤 Voice Command: \"${event.command}\"", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -112,15 +157,28 @@ class CaptionService : Service() {
         mainHandler.post {
             if (speechRecognizer == null) {
                 try {
-                    // Fallback to regular standard system SpeechRecognizer if on-device model package is unavailable/not-downloaded yet (Error 13)
-                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-                        setRecognitionListener(createRecognitionListener())
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
+                        speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this).apply {
+                            setRecognitionListener(createRecognitionListener())
+                        }
+                        Log.d(tag, "Using On-Device Low Latency Speech Recognizer")
+                    } else {
+                        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                            setRecognitionListener(createRecognitionListener())
+                        }
+                        Log.d(tag, "Using System Speech Recognizer in Service")
                     }
-                    Log.d(tag, "Using System Speech Recognizer in Service")
                 } catch (e: Exception) {
-                    Log.e(tag, "Error creating SpeechRecognizer", e)
-                    CaptionEventBus.setListening(false)
-                    return@post
+                    Log.e(tag, "Error creating SpeechRecognizer, falling back to default", e)
+                    try {
+                        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                            setRecognitionListener(createRecognitionListener())
+                        }
+                    } catch (e2: Exception) {
+                        Log.e(tag, "Failed to initialize fallback SpeechRecognizer", e2)
+                        CaptionEventBus.setListening(false)
+                        return@post
+                    }
                 }
             }
             try {
@@ -166,11 +224,38 @@ class CaptionService : Service() {
 
             override fun onError(error: Int) {
                 Log.e(tag, "Service speech recognition error: $error")
+                when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> {
+                        Log.e(tag, "Audio recording error (Error 3). Verify host microphone access in AVD / Windows settings.")
+                    }
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                        stopSpeechRecognition()
+                        mainHandler.postDelayed({ startSpeechRecognition() }, 500)
+                        return
+                    }
+                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> {
+                        Log.w(tag, "On-device speech model error $error. Falling back to standard SpeechRecognizer.")
+                        stopSpeechRecognition()
+                        mainHandler.post {
+                            try {
+                                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this@CaptionService).apply {
+                                    setRecognitionListener(createRecognitionListener())
+                                }
+                                speechRecognizer?.startListening(speechRecognizerIntent)
+                                CaptionEventBus.setListening(true)
+                            } catch (e: Exception) {
+                                Log.e(tag, "Fallback recognizer error", e)
+                            }
+                        }
+                        return
+                    }
+                }
+                val retryDelay = if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) 50L else 100L
                 mainHandler.postDelayed({
                     if (CaptionEventBus.isListening.value) {
                         restartListening()
                     }
-                }, 1000)
+                }, retryDelay)
             }
 
             override fun onEndOfSpeech() {}
@@ -358,6 +443,7 @@ class CaptionService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceScope.cancel()
         stopSpeechRecognition()
         stopCapture()
         mediaProjection?.stop()

@@ -59,6 +59,27 @@ class MainActivity : ComponentActivity() {
                     },
                     onDisclosureDismissed = {
                         viewModel.setShowDisclosureDialog(false)
+                    },
+                    onAccessibilityRowClicked = {
+                        if (!isAccessibilityEnabled()) {
+                            viewModel.setShowDisclosureDialog(true)
+                        } else {
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        }
+                    },
+                    onOverlayRowClicked = {
+                        if (!canDrawOverlays()) {
+                            requestOverlayPermission()
+                        } else {
+                            Toast.makeText(this, "Overlay permission is granted.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onMicrophoneRowClicked = {
+                        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            Toast.makeText(this, "Microphone permission is granted.", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
             }
@@ -80,7 +101,7 @@ class MainActivity : ComponentActivity() {
         try {
             val intent = Intent(this, CaptionService::class.java)
             ContextCompat.startForegroundService(this, intent)
-            Toast.makeText(this, "Caption & Voice Command Service Started", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Tovact Voice Command Service Started", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Log.e(tag, "Error starting CaptionService", e)
             Toast.makeText(this, "Failed to start service.", Toast.LENGTH_SHORT).show()

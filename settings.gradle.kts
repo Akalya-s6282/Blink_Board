@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AccessibilityCaptions"
+rootProject.name = "Tovact"
 include( ":app")
