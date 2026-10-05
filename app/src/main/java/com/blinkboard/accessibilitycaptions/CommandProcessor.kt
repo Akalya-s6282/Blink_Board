@@ -345,6 +345,30 @@ class CommandProcessor(private val context: Context? = null) {
             val shortId = id.substringAfter(":id/").substringAfter("/")
             if (shortId.isNotBlank()) return shortId.replace("_", " ")
         }
+        
+        // Aggregate text from child nodes (crucial for Settings app & compound preference items)
+        if (node.childCount > 0) {
+            val sb = StringBuilder()
+            val queue = ArrayDeque<AccessibilityNodeInfo>()
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+            while (queue.isNotEmpty()) {
+                val child = queue.removeFirst()
+                val childText = child.text?.toString()?.takeIf { it.isNotBlank() }
+                    ?: child.contentDescription?.toString()?.takeIf { it.isNotBlank() }
+                if (childText != null) {
+                    if (sb.isNotEmpty()) sb.append(" ")
+                    sb.append(childText)
+                }
+                for (i in 0 until child.childCount) {
+                    child.getChild(i)?.let { queue.add(it) }
+                }
+            }
+            if (sb.isNotBlank()) {
+                return sb.toString()
+            }
+        }
         return null
     }
 
@@ -356,8 +380,10 @@ class CommandProcessor(private val context: Context? = null) {
 
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
-            if ((node.isClickable || node.isCheckable) && getNodeLabel(node) != null) {
-                nodes.add(node)
+            if (node.isClickable || node.isCheckable) {
+                if (getNodeLabel(node) != null) {
+                    nodes.add(node)
+                }
             }
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { queue.add(it) }

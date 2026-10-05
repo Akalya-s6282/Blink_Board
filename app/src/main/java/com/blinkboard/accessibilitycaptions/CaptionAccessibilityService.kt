@@ -15,7 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class CaptionAccessibilityService : AccessibilityService() {
@@ -63,7 +63,7 @@ class CaptionAccessibilityService : AccessibilityService() {
 
     private fun observeEvents() {
         serviceScope.launch {
-            CaptionEventBus.events.collectLatest { event ->
+            CaptionEventBus.events.collect { event ->
                 when (event) {
                     is CaptionEvent.CaptionUpdate -> {
                         updateCaption(event.text, 5000)
@@ -96,7 +96,11 @@ class CaptionAccessibilityService : AccessibilityService() {
 
     private fun handleVoiceCommand(command: String) {
         serviceScope.launch {
-            val root = rootInActiveWindow
+            var root = rootInActiveWindow
+            if (root == null) {
+                delay(80L)
+                root = rootInActiveWindow
+            }
             val result = commandProcessor.processCommand(command, root)
             when (result) {
                 is CommandResult.UpdateCaption -> {

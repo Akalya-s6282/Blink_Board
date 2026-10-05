@@ -67,9 +67,9 @@ class CaptionService : Service() {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 400L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 400L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 250L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 250L)
         }
     }
 
@@ -229,8 +229,11 @@ class CaptionService : Service() {
                         Log.e(tag, "Audio recording error (Error 3). Verify host microphone access in AVD / Windows settings.")
                     }
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                        stopSpeechRecognition()
-                        mainHandler.postDelayed({ startSpeechRecognition() }, 500)
+                        mainHandler.postDelayed({
+                            if (CaptionEventBus.isListening.value) {
+                                restartListening()
+                            }
+                        }, 30L)
                         return
                     }
                     SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> {
