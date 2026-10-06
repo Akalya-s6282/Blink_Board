@@ -1,9 +1,11 @@
 package com.blinkboard.accessibilitycaptions.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,14 +20,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessibilityNew
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.Swipe
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -38,19 +47,24 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.foundation.clickable
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -81,25 +95,42 @@ fun MainScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.RecordVoiceOver,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.RecordVoiceOver,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier
+                                        .padding(6.dp)
+                                        .size(20.dp)
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.app_name),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
                         Text(
-                            text = stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                            text = "AI-Powered Assistive Voice Assistant",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -108,21 +139,21 @@ fun MainScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(20.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // System Readiness Card
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.elevatedCardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 )
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -146,26 +177,29 @@ fun MainScreen(
                         ) {
                             Text(
                                 text = overallStatusText,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = overallContentColor
                             )
                         }
                     }
-                    HorizontalDivider()
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     PermissionStatusRow(
+                        icon = Icons.Default.AccessibilityNew,
                         label = "Accessibility Service",
                         isGranted = uiState.isAccessibilityEnabled,
                         onClick = onAccessibilityRowClicked
                     )
                     PermissionStatusRow(
+                        icon = Icons.Default.Layers,
                         label = "Overlay Permission",
                         isGranted = uiState.isOverlayGranted,
                         onClick = onOverlayRowClicked
                     )
                     PermissionStatusRow(
+                        icon = Icons.Default.Mic,
                         label = "Microphone Permission",
                         isGranted = uiState.isAudioPermissionGranted,
                         onClick = onMicrophoneRowClicked
@@ -173,16 +207,17 @@ fun MainScreen(
                 }
             }
 
-            // Operating Mode Segmented Card
+            // Operating Mode Card
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.elevatedCardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
                         text = "Operating Mode",
@@ -206,7 +241,7 @@ fun MainScreen(
                                 )
                             }
                         ) {
-                            Text("Caption Mode")
+                            Text("Caption Mode", fontWeight = FontWeight.SemiBold)
                         }
                         SegmentedButton(
                             selected = uiState.isCommandMode,
@@ -220,55 +255,77 @@ fun MainScreen(
                                 )
                             }
                         ) {
-                            Text("Command Mode")
+                            Text("Command Mode", fontWeight = FontWeight.SemiBold)
                         }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    val infoBgColor by animateColorAsState(
+                        targetValue = if (uiState.isCommandMode) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                        label = "modeBgColor"
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = infoBgColor,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = if (uiState.isCommandMode) Icons.Default.Bolt else Icons.Default.Subtitles,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = if (uiState.isCommandMode) {
-                                "Command Mode Active: Speak commands like 'click submit', 'open camera', 'scroll down'."
-                            } else {
-                                "Captions Mode Active: Displaying speech-to-text captions on floating overlay."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (uiState.isCommandMode) Icons.Default.Bolt else Icons.Default.Subtitles,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = if (uiState.isCommandMode) {
+                                    "Command Mode: Control your device by voice! Say 'click submit', 'show numbers', 'open camera', or 'scroll down'."
+                                } else {
+                                    "Caption Mode: Stream live speech-to-text captions on a floating translucent window."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
 
-            // Live Caption Preview Box
+            // Live Caption Listening Preview
             AnimatedVisibility(
                 visible = uiState.isListening,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                ElevatedCard(
+                OutlinedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary)
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Mic,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.secondary
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondary,
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .size(20.dp)
+                            )
+                        }
                         Column {
                             Text(
                                 text = if (uiState.isCommandMode) "Listening for Voice Commands..." else "Listening for Speech...",
@@ -277,7 +334,7 @@ fun MainScreen(
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                             Text(
-                                text = "Speak into microphone to test overlay transcription.",
+                                text = "Speak into microphone to execute commands or stream live captions.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
@@ -286,15 +343,14 @@ fun MainScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Adaptive Hero Call-To-Action Button
+            // Adaptive Hero Action Button
             if (!allPermissionsGranted) {
                 Button(
                     onClick = onEnableAccessibilityClicked,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(58.dp),
+                    shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
@@ -316,7 +372,8 @@ fun MainScreen(
                     onClick = onStartListeningClicked,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(58.dp),
+                    shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
@@ -324,11 +381,11 @@ fun MainScreen(
                     Icon(
                         imageVector = Icons.Default.Mic,
                         contentDescription = null,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Start Speech Recognition",
+                        text = "Start Voice Assistant",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -338,7 +395,8 @@ fun MainScreen(
                     onClick = onStopListeningClicked,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(58.dp),
+                    shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error
                     )
@@ -346,11 +404,11 @@ fun MainScreen(
                     Icon(
                         imageVector = Icons.Default.Stop,
                         contentDescription = null,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Stop Recognition",
+                        text = "Stop Voice Assistant",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -362,7 +420,8 @@ fun MainScreen(
                     onClick = onStartListeningClicked,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(52.dp),
+                    shape = RoundedCornerShape(26.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.MicOff,
@@ -374,6 +433,121 @@ fun MainScreen(
                         text = "Start Microphone Only",
                         style = MaterialTheme.typography.labelLarge
                     )
+                }
+            }
+
+            // Voice Control Practice Playground Card
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Voice Command Playground",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Practice commands! Speak 'click option A', 'show numbers', 'home', or 'scroll down'.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        var clickedText by remember { mutableStateOf("Option A") }
+                        OutlinedButton(
+                            onClick = { clickedText = "Option A Clicked! ✅" },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(clickedText, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        var clickedTextB by remember { mutableStateOf("Option B") }
+                        OutlinedButton(
+                            onClick = { clickedTextB = "Option B Clicked! ✅" },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(clickedTextB, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+
+            // Voice Commands Reference Guide Accordion
+            var isGuideExpanded by remember { mutableStateOf(false) }
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isGuideExpanded = !isGuideExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Apps,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Voice Command Reference Guide",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Icon(
+                            imageVector = if (isGuideExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null
+                        )
+                    }
+
+                    AnimatedVisibility(visible = isGuideExpanded) {
+                        Column(
+                            modifier = Modifier.padding(top = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            HorizontalDivider()
+                            CommandCategoryItem(
+                                icon = Icons.Default.Tag,
+                                title = "Numbered Badges",
+                                examples = "'show numbers', '1', '2', 'click 3', 'tap 4'"
+                            )
+                            CommandCategoryItem(
+                                icon = Icons.Default.Apps,
+                                title = "App Launching",
+                                examples = "'open google', 'open settings', 'open camera', 'open chrome'"
+                            )
+                            CommandCategoryItem(
+                                icon = Icons.Default.Swipe,
+                                title = "Scrolling & Navigation",
+                                examples = "'scroll down', 'swipe up', 'go back', 'home', 'recents'"
+                            )
+                            CommandCategoryItem(
+                                icon = Icons.Default.RecordVoiceOver,
+                                title = "Text Typing & Actions",
+                                examples = "'type hello world', 'end call', 'take screenshot'"
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -410,7 +584,37 @@ fun MainScreen(
 }
 
 @Composable
+private fun CommandCategoryItem(icon: ImageVector, title: String, examples: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.size(18.dp)
+        )
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = examples,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 private fun PermissionStatusRow(
+    icon: ImageVector,
     label: String,
     isGranted: Boolean,
     onClick: (() -> Unit)? = null
@@ -426,12 +630,23 @@ private fun PermissionStatusRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
 
         val badgeContainerColor = if (isGranted) Color(0xFFEAF5EA) else Color(0xFFFDE8E8)
         val badgeBorderColor = if (isGranted) Color(0xFFC8E6C9) else Color(0xFFFFCDD2)

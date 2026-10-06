@@ -17,6 +17,13 @@ sealed class CommandResult {
     ) : CommandResult()
     data class ShowToast(val message: String) : CommandResult()
     object GoBack : CommandResult()
+    object GoHome : CommandResult()
+    object OpenRecents : CommandResult()
+    object OpenNotifications : CommandResult()
+    object OpenQuickSettings : CommandResult()
+    object TakeScreenshot : CommandResult()
+    object ShowNumbers : CommandResult()
+    data class ClickBadgeNumber(val number: Int) : CommandResult()
     object Handled : CommandResult()
 }
 
@@ -47,6 +54,12 @@ class CommandProcessor(private val context: Context? = null) {
         rootNode: AccessibilityNodeInfo?
     ): CommandResult = withContext(Dispatchers.Default) {
         val trimmedCommand = command.lowercase().trim()
+
+        // Check if input is a spoken number ("1", "one", "number 2", "click three")
+        val spokenNumber = parseNumberFromSpeech(trimmedCommand)
+        if (spokenNumber != null && (trimmedCommand.length <= 15 || trimmedCommand.startsWith("click") || trimmedCommand.startsWith("tap") || trimmedCommand.startsWith("number") || trimmedCommand.startsWith("badge"))) {
+            return@withContext CommandResult.ClickBadgeNumber(spokenNumber)
+        }
 
         if (confirmCommands.any { trimmedCommand == it }) {
             val target = pendingTargetText
@@ -93,12 +106,13 @@ class CommandProcessor(private val context: Context? = null) {
         }
 
         // Reset pending target only if a recognized new command is issued
-        val isKnownCommand = trimmedCommand == "show elements" ||
+        val isKnownCommand = trimmedCommand in listOf("show elements", "show numbers", "show badges", "home", "recents", "notifications", "quick settings", "screenshot") ||
                 clickCommands.any { trimmedCommand.startsWith(it) } ||
                 trimmedCommand.startsWith("type") ||
                 trimmedCommand.startsWith("open") ||
-                trimmedCommand.startsWith("scroll") ||
-                trimmedCommand == "go back" ||
+                trimmedCommand.contains("scroll") ||
+                trimmedCommand.contains("swipe") ||
+                trimmedCommand.contains("back") ||
                 trimmedCommand.contains("end call")
 
         if (isKnownCommand) {
@@ -108,7 +122,28 @@ class CommandProcessor(private val context: Context? = null) {
         }
 
         when {
-            trimmedCommand == "show elements" -> {
+            trimmedCommand in listOf("show numbers", "show badges", "numbers", "badges") -> {
+                CommandResult.ShowNumbers
+            }
+            trimmedCommand in listOf("home", "go home", "home screen") -> {
+                CommandResult.GoHome
+            }
+            trimmedCommand in listOf("recents", "recent apps", "show recents", "open recents") -> {
+                CommandResult.OpenRecents
+            }
+            trimmedCommand in listOf("notifications", "open notifications", "show notifications") -> {
+                CommandResult.OpenNotifications
+            }
+            trimmedCommand in listOf("quick settings", "open quick settings") -> {
+                CommandResult.OpenQuickSettings
+            }
+            trimmedCommand in listOf("screenshot", "take screenshot", "capture screen") -> {
+                CommandResult.TakeScreenshot
+            }
+            trimmedCommand in listOf("back", "go back", "previous") -> {
+                CommandResult.GoBack
+            }
+            trimmedCommand in listOf("show elements", "elements") -> {
                 val interactiveNodes = findInteractiveNodes(rootNode)
                 val elementTexts = interactiveNodes.mapNotNull { getNodeLabel(it) }
                 val displayText = if (elementTexts.isNotEmpty()) {
@@ -154,8 +189,8 @@ class CommandProcessor(private val context: Context? = null) {
                 val appName = trimmedCommand.substringAfter("open").trim()
                 handleOpenCommand(appName)
             }
-            trimmedCommand.startsWith("scroll") -> {
-                val direction = if (trimmedCommand.contains("up")) "up" else "down"
+            trimmedCommand.contains("scroll") || trimmedCommand.contains("swipe") || trimmedCommand in listOf("down", "up", "page down", "page up") -> {
+                val direction = if (trimmedCommand.contains("up") || trimmedCommand.contains("page up")) "up" else "down"
                 CommandResult.PerformAction(
                     failureMessage = "No scrollable area found on screen."
                 ) { root ->
@@ -171,9 +206,6 @@ class CommandProcessor(private val context: Context? = null) {
                         false
                     }
                 }
-            }
-            trimmedCommand == "go back" -> {
-                CommandResult.GoBack
             }
             trimmedCommand.contains("end call") -> {
                 val endButton = findNodeByTextOrDescription(rootNode, "end")
@@ -314,28 +346,50 @@ class CommandProcessor(private val context: Context? = null) {
         }
     }
 
+    fun parseNumberFromSpeech(input: String): Int? {
+        val clean = input.lowercase().trim()
+
+        clean.toIntOrNull()?.let { if (it >= 1) return it }
+
+        val match = Regex("(?:number|badge|item|option|click|tap|press|#)?\\s*(\\d+)(?:st|nd|rd|th)?").find(clean)
+        if (match != null) {
+            val num = match.groupValues[1].toIntOrNull()
+            if (num != null && num >= 1) return num
+        }
+
+        val wordMap = mapOf(
+            "one" to 1, "first" to 1, "1st" to 1,
+            "two" to 2, "second" to 2, "2nd" to 2,
+            "three" to 3, "third" to 3, "3rd" to 3,
+            "four" to 4, "fourth" to 4, "4th" to 4,
+            "five" to 5, "fifth" to 5, "5th" to 5,
+            "six" to 6, "sixth" to 6, "6th" to 6,
+            "seven" to 7, "seventh" to 7, "7th" to 7,
+            "eight" to 8, "eighth" to 8, "8th" to 8,
+            "nine" to 9, "ninth" to 9, "9th" to 9,
+            "ten" to 10, "tenth" to 10, "10th" to 10,
+            "eleven" to 11, "twelve" to 12, "thirteen" to 13,
+            "fourteen" to 14, "fifteen" to 15, "sixteen" to 16,
+            "seventeen" to 17, "eighteen" to 18, "nineteen" to 19, "twenty" to 20
+        )
+
+        for ((word, num) in wordMap) {
+            if (clean == word || clean.endsWith(" $word") || clean.startsWith("$word ") || clean.contains(" $word ")) {
+                return num
+            }
+        }
+
+        return null
+    }
+
     fun cleanTarget(target: String): String {
         val tokens = target.lowercase().trim().split("\\s+".toRegex()).filter { it !in FILLER_WORDS }
         return if (tokens.isNotEmpty()) tokens.joinToString(" ") else target.lowercase().trim()
     }
 
     private fun parseTargetIndex(target: String): Int? {
-        val clean = target.lowercase().trim()
-        val match = Regex("(?:item|option|number|button|#)?\\s*(\\d+)(?:st|nd|rd|th)?").find(clean)
-        if (match != null) {
-            val numStr = match.groupValues[1]
-            val num = numStr.toIntOrNull()
-            if (num != null && num >= 1) return num - 1
-        }
-        return when (clean) {
-            "first", "1st" -> 0
-            "second", "2nd" -> 1
-            "third", "3rd" -> 2
-            "fourth", "4th" -> 3
-            "fifth", "5th" -> 4
-            "sixth", "6th" -> 5
-            else -> null
-        }
+        val num = parseNumberFromSpeech(target)
+        return if (num != null && num >= 1) num - 1 else null
     }
 
     fun getNodeLabel(node: AccessibilityNodeInfo): String? {
@@ -346,23 +400,16 @@ class CommandProcessor(private val context: Context? = null) {
             if (shortId.isNotBlank()) return shortId.replace("_", " ")
         }
         
-        // Aggregate text from child nodes (crucial for Settings app & compound preference items)
+        // Fast depth-1 check of immediate children (prevents O(N^2) Binder IPC lockups)
         if (node.childCount > 0) {
             val sb = StringBuilder()
-            val queue = ArrayDeque<AccessibilityNodeInfo>()
             for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
-            }
-            while (queue.isNotEmpty()) {
-                val child = queue.removeFirst()
+                val child = node.getChild(i) ?: continue
                 val childText = child.text?.toString()?.takeIf { it.isNotBlank() }
                     ?: child.contentDescription?.toString()?.takeIf { it.isNotBlank() }
                 if (childText != null) {
                     if (sb.isNotEmpty()) sb.append(" ")
                     sb.append(childText)
-                }
-                for (i in 0 until child.childCount) {
-                    child.getChild(i)?.let { queue.add(it) }
                 }
             }
             if (sb.isNotBlank()) {

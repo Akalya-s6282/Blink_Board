@@ -211,4 +211,55 @@ class CommandProcessorTest {
         assertEquals(1, processor.levenshtein("settins", "settings"))
         assertEquals(2, processor.levenshtein("submti", "submit"))
     }
+
+    // --- UX Enhancements: Numbers, Synonyms & Global Gestures ---
+
+    @Test
+    fun testProcessPureNumberVoiceTriggers() = runBlocking {
+        val resultOne = processor.processCommand("1", null)
+        assertTrue(resultOne is CommandResult.ClickBadgeNumber)
+        assertEquals(1, (resultOne as CommandResult.ClickBadgeNumber).number)
+
+        val resultFive = processor.processCommand("5", null)
+        assertTrue(resultFive is CommandResult.ClickBadgeNumber)
+        assertEquals(5, (resultFive as CommandResult.ClickBadgeNumber).number)
+    }
+
+    @Test
+    fun testParseNumberFromSpeechWordNumbers() = runBlocking {
+        assertEquals(1, processor.parseNumberFromSpeech("one"))
+        assertEquals(2, processor.parseNumberFromSpeech("two"))
+        assertEquals(3, processor.parseNumberFromSpeech("three"))
+        assertEquals(4, processor.parseNumberFromSpeech("number four"))
+        assertEquals(5, processor.parseNumberFromSpeech("click 5"))
+        assertEquals(6, processor.parseNumberFromSpeech("tap six"))
+
+        val resultOne = processor.processCommand("one", null)
+        assertTrue(resultOne is CommandResult.ClickBadgeNumber)
+        assertEquals(1, (resultOne as CommandResult.ClickBadgeNumber).number)
+
+        val resultTwo = processor.processCommand("number two", null)
+        assertTrue(resultTwo is CommandResult.ClickBadgeNumber)
+        assertEquals(2, (resultTwo as CommandResult.ClickBadgeNumber).number)
+    }
+
+    @Test
+    fun testProcessShowNumbersAndBadges() = runBlocking {
+        val result = processor.processCommand("show numbers", null)
+        assertTrue(result is CommandResult.ShowNumbers)
+
+        val resultBadges = processor.processCommand("show badges", null)
+        assertTrue(resultBadges is CommandResult.ShowNumbers)
+    }
+
+    @Test
+    fun testProcessGlobalSystemGesturesSynonyms() = runBlocking {
+        assertTrue(processor.processCommand("home", null) is CommandResult.GoHome)
+        assertTrue(processor.processCommand("go home", null) is CommandResult.GoHome)
+        assertTrue(processor.processCommand("recents", null) is CommandResult.OpenRecents)
+        assertTrue(processor.processCommand("notifications", null) is CommandResult.OpenNotifications)
+        assertTrue(processor.processCommand("screenshot", null) is CommandResult.TakeScreenshot)
+        assertTrue(processor.processCommand("take screenshot", null) is CommandResult.TakeScreenshot)
+        assertTrue(processor.processCommand("back", null) is CommandResult.GoBack)
+    }
 }
