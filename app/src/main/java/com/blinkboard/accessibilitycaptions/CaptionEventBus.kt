@@ -18,7 +18,8 @@ sealed interface CaptionEvent {
  */
 object CaptionEventBus {
     private val _events = MutableSharedFlow<CaptionEvent>(
-        extraBufferCapacity = 64
+        extraBufferCapacity = 128,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
     )
     val events: SharedFlow<CaptionEvent> = _events.asSharedFlow()
 

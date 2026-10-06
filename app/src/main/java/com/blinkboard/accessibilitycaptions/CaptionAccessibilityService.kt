@@ -17,6 +17,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class CaptionAccessibilityService : AccessibilityService() {
 
@@ -26,6 +28,7 @@ class CaptionAccessibilityService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var commandProcessor: CommandProcessor
+    private val commandMutex = Mutex()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -96,45 +99,48 @@ class CaptionAccessibilityService : AccessibilityService() {
 
     private fun handleVoiceCommand(command: String) {
         serviceScope.launch {
-            var root = rootInActiveWindow
-            if (root == null) {
-                delay(80L)
-                root = rootInActiveWindow
-            }
-            val result = commandProcessor.processCommand(command, root)
-            when (result) {
-                is CommandResult.UpdateCaption -> {
-                    updateCaption(result.text, result.durationMs)
+            commandMutex.withLock {
+                var root = rootInActiveWindow
+                if (root == null) {
+                    delay(100L)
+                    root = rootInActiveWindow
                 }
-                is CommandResult.PerformAction -> {
-                    val performed = result.action(rootInActiveWindow)
-                    if (!performed) {
-                        val cleanCmd = command.lowercase().trim()
-                        if (cleanCmd.contains("scroll")) {
-                            val direction = if (cleanCmd.contains("up")) "up" else "down"
-                            val gesturePerformed = performScrollGesture(direction)
-                            if (gesturePerformed) {
-                                updateCaption("📜 Scrolled $direction", 2000)
+                val result = commandProcessor.processCommand(command, root)
+                when (result) {
+                    is CommandResult.UpdateCaption -> {
+                        updateCaption(result.text, result.durationMs)
+                    }
+                    is CommandResult.PerformAction -> {
+                        val performed = result.action(rootInActiveWindow)
+                        if (!performed) {
+                            val cleanCmd = command.lowercase().trim()
+                            if (cleanCmd.contains("scroll")) {
+                                val direction = if (cleanCmd.contains("up")) "up" else "down"
+                                val gesturePerformed = performScrollGesture(direction)
+                                if (gesturePerformed) {
+                                    updateCaption("📜 Scrolled $direction", 2000)
+                                } else {
+                                    updateCaption("⚠️ ${result.failureMessage}", 4000)
+                                }
                             } else {
                                 updateCaption("⚠️ ${result.failureMessage}", 4000)
                             }
-                        } else {
-                            updateCaption("⚠️ ${result.failureMessage}", 4000)
                         }
                     }
-                }
-                is CommandResult.GoBack -> {
-                    val success = performGlobalAction(GLOBAL_ACTION_BACK)
-                    if (success) {
-                        updateCaption("◀️ Navigated Back", 3000)
-                    } else {
-                        updateCaption("⚠️ Could not perform back navigation", 3000)
+                    is CommandResult.GoBack -> {
+                        val success = performGlobalAction(GLOBAL_ACTION_BACK)
+                        if (success) {
+                            updateCaption("◀️ Navigated Back", 3000)
+                        } else {
+                            updateCaption("⚠️ Could not perform back navigation", 3000)
+                        }
                     }
+                    is CommandResult.ShowToast -> {
+                        updateCaption("⚠️ ${result.message}", 4000)
+                    }
+                    CommandResult.Handled -> {}
                 }
-                is CommandResult.ShowToast -> {
-                    updateCaption("⚠️ ${result.message}", 4000)
-                }
-                CommandResult.Handled -> {}
+                delay(150L)
             }
         }
     }
