@@ -66,10 +66,9 @@ class CaptionService : Service() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 250L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 250L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
         }
     }
 
@@ -157,17 +156,10 @@ class CaptionService : Service() {
         mainHandler.post {
             if (speechRecognizer == null) {
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
-                        speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this).apply {
-                            setRecognitionListener(createRecognitionListener())
-                        }
-                        Log.d(tag, "Using On-Device Low Latency Speech Recognizer")
-                    } else {
-                        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-                            setRecognitionListener(createRecognitionListener())
-                        }
-                        Log.d(tag, "Using System Speech Recognizer in Service")
+                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                        setRecognitionListener(createRecognitionListener())
                     }
+                    Log.d(tag, "Using System Speech Recognizer in Service")
                 } catch (e: Exception) {
                     Log.e(tag, "Error creating SpeechRecognizer, falling back to default", e)
                     try {
