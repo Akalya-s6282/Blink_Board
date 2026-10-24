@@ -28,12 +28,12 @@ class NumberOverlayView(context: Context) : View(context) {
     private val badgeBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = "#FFD600".toColorInt() // Bright gold yellow border
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 3.5f
     }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textSize = 40f
+        textSize = 26f
         isFakeBoldText = true
         textAlign = Paint.Align.CENTER
     }
@@ -55,15 +55,15 @@ class NumberOverlayView(context: Context) : View(context) {
         super.onDraw(canvas)
         if (elements.isEmpty()) return
 
-        val radius = 28f
+        val radius = 22f
 
         for (item in elements) {
             val rect = item.bounds
             if (rect.isEmpty || rect.width() <= 0 || rect.height() <= 0) continue
 
-            // Align badge tag cleanly at top-left corner of element bounds
+            // Uniform alignment: Left border, vertical middle of each element
             val centerX = (rect.left + radius).coerceIn(radius, width.toFloat() - radius)
-            val centerY = (rect.top + radius).coerceIn(radius, height.toFloat() - radius)
+            val centerY = rect.exactCenterY().coerceIn(radius, height.toFloat() - radius)
 
             // Draw circle background & border
             canvas.drawCircle(centerX, centerY, radius, badgeBgPaint)

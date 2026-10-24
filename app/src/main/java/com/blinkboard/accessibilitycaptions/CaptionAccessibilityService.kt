@@ -119,7 +119,13 @@ class CaptionAccessibilityService : AccessibilityService() {
         }
     }
 
+    private var lastVibrationTime = 0L
+
     private fun triggerHapticFeedback(isSuccess: Boolean = true) {
+        val now = System.currentTimeMillis()
+        if (now - lastVibrationTime < 500L) return // Throttle vibrations to eliminate noise/buzzing
+        lastVibrationTime = now
+
         try {
             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vibratorManager = getSystemService(VIBRATOR_MANAGER_SERVICE) as? VibratorManager
@@ -130,9 +136,9 @@ class CaptionAccessibilityService : AccessibilityService() {
             }
             if (vibrator?.hasVibrator() == true) {
                 val effect = if (isSuccess) {
-                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
                 } else {
-                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
+                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
                 }
                 vibrator.vibrate(effect)
             }
